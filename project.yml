@@ -1,0 +1,41 @@
+name: BenyControl
+options:
+  minimumXcodeGenVersion: 2.38.0
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: 16.0
+    SWIFT_VERSION: 5.9
+targets:
+  BenyControl:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Core
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.BenyControl
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+  BenyControlTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - BenyControlTests
+    dependencies:
+      - target: BenyControl
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.BenyControlTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/BenyControl.app/BenyControl"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  BenyControl:
+    build:
+      targets:
+        BenyControl: all
+        BenyControlTests: [test]
+    test:
+      targets:
+        - BenyControlTests
