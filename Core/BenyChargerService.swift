@@ -66,49 +66,6 @@ actor BenyChargerService {
     func setChargeStartMode(_ mode: BenyChargeStartMode) async throws {
         try await sendControl(BenyProtocol.setChargeStartModeRequest(pin: configuration.pin, mode: mode))
     }
-    func probeChargeStartModeRead() async throws -> String {
-        let packet = try BenyProtocol.chargeStartModeReadRequest(pin: configuration.pin)
-        trace?(BenyDebugEvent(timestamp: .now, direction: "→", hex: BenyProtocol.redactedHex(packet), detail: "Prueba de lectura de modo de inicio"))
-        let reply = try await client.request(packet)
-        let redactedReply = BenyProtocol.redactedHex(reply)
-        trace?(BenyDebugEvent(timestamp: .now, direction: "←", hex: redactedReply, detail: "Respuesta a prueba de lectura de modo"))
-        return redactedReply
-    }
-    func probeGenericChargeStartModeRead() async throws -> String {
-        let packet = try BenyProtocol.genericChargeStartModeReadRequest(pin: configuration.pin)
-        trace?(BenyDebugEvent(timestamp: .now, direction: "→", hex: BenyProtocol.redactedHex(packet), detail: "Prueba de lectura genérica del modo de inicio"))
-        let reply = try await client.request(packet)
-        let redactedReply = BenyProtocol.redactedHex(reply)
-        trace?(BenyDebugEvent(timestamp: .now, direction: "←", hex: redactedReply, detail: "Respuesta a prueba genérica de modo"))
-        return redactedReply
-    }
-    func probeChargeStartModeReadCandidates() async -> [String] {
-        let candidates: [(String, Data?)] = [
-            ("6a directa", try? BenyProtocol.chargeStartModeReadRequest(pin: configuration.pin)),
-            ("6a en consulta genérica 10", try? BenyProtocol.genericChargeStartModeReadRequest(pin: configuration.pin)),
-            ("71 en consulta genérica 10", try? BenyProtocol.weeklyScheduleRequest(pin: configuration.pin)),
-            ("71 directa de Z-Box", try? BenyProtocol.directSettingsReadRequest(pin: configuration.pin))
-        ]
-        var results: [String] = []
-        for (name, maybePacket) in candidates {
-            guard let packet = maybePacket else {
-                results.append("\(name): no se pudo construir la consulta")
-                continue
-            }
-            trace?(BenyDebugEvent(timestamp: .now, direction: "→", hex: BenyProtocol.redactedHex(packet), detail: "Sondeo de lectura: \(name)"))
-            do {
-                let probeClient = try BenyUDPClient(ipAddress: configuration.ipAddress, port: configuration.port)
-                let reply = try await probeClient.request(packet, timeout: 2)
-                await probeClient.disconnect()
-                let redactedReply = BenyProtocol.redactedHex(reply)
-                trace?(BenyDebugEvent(timestamp: .now, direction: "←", hex: redactedReply, detail: "Respuesta de sondeo: \(name)"))
-                results.append("\(name): \(redactedReply)")
-            } catch {
-                results.append("\(name): sin respuesta (\(error.localizedDescription))")
-            }
-        }
-        return results
-    }
     func setMaxCurrent(_ amps: Int) async throws { try await sendControl(BenyProtocol.setMaxCurrentRequest(pin: configuration.pin, amps: amps)) }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) async throws {
         try await sendControl(BenyProtocol.setTimerRequest(pin: configuration.pin, startHour: startHour, startMinute: startMinute, endHour: endHour, endMinute: endMinute))

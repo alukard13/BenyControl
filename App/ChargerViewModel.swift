@@ -28,9 +28,6 @@ final class ChargerViewModel: ObservableObject {
     @Published var dashboard = BenyDashboard()
     @Published private(set) var weeklySchedule: BenyWeeklySchedule?
     @Published private(set) var chargeStartMode: BenyChargeStartMode?
-    @Published private(set) var chargeStartModeReadResult: String?
-    @Published private(set) var genericChargeStartModeReadResult: String?
-    @Published private(set) var chargeStartModeProbeResults: [String] = []
     @Published var isConnected = false
     @Published var isWorking = false
     @Published private(set) var isCommandRunning = false
@@ -148,21 +145,6 @@ final class ChargerViewModel: ObservableObject {
             if let id = self.activeChargerID {
                 self.defaults.set(mode.rawValue, forKey: self.chargeStartModeKey(id: id))
             }
-        }
-    }
-    func probeChargeStartModeRead() {
-        runExclusive { service in
-            self.chargeStartModeReadResult = try await service.probeChargeStartModeRead()
-        }
-    }
-    func probeGenericChargeStartModeRead() {
-        runExclusive { service in
-            self.genericChargeStartModeReadResult = try await service.probeGenericChargeStartModeRead()
-        }
-    }
-    func probeChargeStartModeReadCandidates() {
-        runExclusive { service in
-            self.chargeStartModeProbeResults = await service.probeChargeStartModeReadCandidates()
         }
     }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) {
@@ -329,8 +311,8 @@ final class ChargerViewModel: ObservableObject {
               profile.serialNumber.count == 9, profile.serialNumber.allSatisfy(\.isNumber),
               profile.pin.count == 6, profile.pin.allSatisfy(\.isNumber) else {
             errorMessage = activeCharger == nil
-                ? "Añade y configura un cargador en Ajustes."
-                : "Revisa la IP, el puerto, la serie de 9 dígitos y el PIN de 6 dígitos en Ajustes."
+                ? "Añade y configura un cargador en Conexión."
+                : "Revisa la IP, el puerto, la serie de 9 dígitos y el PIN de 6 dígitos en Conexión."
             return nil
         }
         return BenyConnectionConfiguration(
@@ -358,9 +340,6 @@ final class ChargerViewModel: ObservableObject {
         chargeStartMode = activeChargerID.flatMap { id in
             defaults.string(forKey: chargeStartModeKey(id: id)).flatMap(BenyChargeStartMode.init(rawValue:))
         }
-        chargeStartModeReadResult = nil
-        genericChargeStartModeReadResult = nil
-        chargeStartModeProbeResults = []
         isConnected = false
         errorMessage = nil
     }

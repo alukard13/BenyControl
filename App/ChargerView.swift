@@ -271,49 +271,20 @@ private struct ChargerSettingsTab: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Modo de inicio") {
-                    ForEach(BenyChargeStartMode.allCases) { mode in
-                        Button {
-                            model.setChargeStartMode(mode)
-                        } label: {
-                            HStack {
-                                Text(mode.displayName).foregroundStyle(.primary)
-                                Spacer()
-                                if model.chargeStartMode == mode {
-                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
-                                }
-                            }
-                        }
+                Section("Inicio de carga") {
+                    Toggle("RFID", isOn: rfidBinding)
                         .disabled(model.isCommandRunning)
-                    }
-                    if let currentMode = model.chargeStartMode {
-                        Text("Modo actual del cargador: \(currentMode.displayName).")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-                Section("Pruebas de lectura") {
-                    Text("Herramientas de diagnóstico del protocolo. Las consultas no cambian la configuración del cargador.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    Button("Probar lectura directa del modo") { model.probeChargeStartModeRead() }
+                    Toggle("Control de carga vía app", isOn: appBinding)
                         .disabled(model.isCommandRunning)
-                    if let result = model.chargeStartModeReadResult {
-                        LabeledContent("Respuesta", value: result)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                    Button("Probar consulta genérica") { model.probeGenericChargeStartModeRead() }
+                    Toggle("Conectar e iniciar", isOn: connectAndStartBinding)
                         .disabled(model.isCommandRunning)
-                    if let result = model.genericChargeStartModeReadResult {
-                        LabeledContent("Respuesta genérica", value: result)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                    Button("Probar varias consultas") { model.probeChargeStartModeReadCandidates() }
-                        .disabled(model.isCommandRunning)
-                    ForEach(Array(model.chargeStartModeProbeResults.enumerated()), id: \.offset) { _, result in
-                        Text(result)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
+                    Text("RFID y el control desde la app pueden usarse a la vez. Conectar e iniciar se activa cuando ambos están desactivados.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let mode = model.chargeStartMode {
+                        Text("Modo actual: \(mode.displayName)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 Section("Registro técnico") {
@@ -333,6 +304,45 @@ private struct ChargerSettingsTab: View {
             }
             .navigationTitle("Ajustes")
         }
+    }
+
+    private var activeMode: BenyChargeStartMode {
+        model.chargeStartMode ?? .connectAndStart
+    }
+
+    private var rfidBinding: Binding<Bool> {
+        Binding(
+            get: { activeMode.rfidEnabled },
+            set: { isEnabled in
+                if isEnabled {
+                    model.setChargeStartMode(activeMode.appEnabled ? .rfidAndApp : .rfid)
+                } else {
+                    model.setChargeStartMode(activeMode.appEnabled ? .app : .connectAndStart)
+                }
+            }
+        )
+    }
+
+    private var appBinding: Binding<Bool> {
+        Binding(
+            get: { activeMode.appEnabled },
+            set: { isEnabled in
+                if isEnabled {
+                    model.setChargeStartMode(activeMode.rfidEnabled ? .rfidAndApp : .app)
+                } else {
+                    model.setChargeStartMode(activeMode.rfidEnabled ? .rfid : .connectAndStart)
+                }
+            }
+        )
+    }
+
+    private var connectAndStartBinding: Binding<Bool> {
+        Binding(
+            get: { activeMode == .connectAndStart },
+            set: { isEnabled in
+                if isEnabled { model.setChargeStartMode(.connectAndStart) }
+            }
+        )
     }
 }
 
