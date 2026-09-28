@@ -89,7 +89,7 @@ actor BenyChargerService {
         try await sendControl(BenyProtocol.setSessionEnergyLimitRequest(pin: configuration.pin, kilowattHours: kilowattHours))
     }
     func requestWeeklySchedule() async throws -> BenyWeeklySchedule {
-        let packet = try BenyProtocol.weeklyScheduleRequest(pin: configuration.pin)
+        let packet = try BenyProtocol.directSettingsReadRequest(pin: configuration.pin)
         trace?(BenyDebugEvent(timestamp: .now, direction: "→", hex: BenyProtocol.redactedHex(packet), detail: "Horario semanal solicitado"))
         let reply = try await client.request(packet)
         trace?(BenyDebugEvent(timestamp: .now, direction: "←", hex: String(data: reply, encoding: .ascii) ?? "<no ASCII>", detail: "Horario semanal recibido"))

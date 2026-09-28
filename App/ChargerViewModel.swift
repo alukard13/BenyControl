@@ -27,6 +27,7 @@ final class ChargerViewModel: ObservableObject {
     @Published private(set) var activeChargerID: UUID?
     @Published var dashboard = BenyDashboard()
     @Published private(set) var weeklySchedule: BenyWeeklySchedule?
+    @Published private(set) var isLoadingWeeklySchedule = false
     @Published private(set) var chargeStartMode: BenyChargeStartMode?
     @Published private(set) var isLoadingInitialData = false
     @Published var isConnected = false
@@ -161,7 +162,11 @@ final class ChargerViewModel: ObservableObject {
         }
     }
     func requestWeeklySchedule() {
-        runExclusive { service in self.weeklySchedule = try await service.requestWeeklySchedule() }
+        runExclusive { service in
+            self.isLoadingWeeklySchedule = true
+            defer { self.isLoadingWeeklySchedule = false }
+            self.weeklySchedule = try await service.requestWeeklySchedule()
+        }
     }
     func setMonthlyEnergyLimit(_ kilowattHours: Int) {
         control {

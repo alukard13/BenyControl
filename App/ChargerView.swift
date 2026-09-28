@@ -178,6 +178,12 @@ private struct ProgrammingView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if model.isLoadingInitialData {
+                    Section {
+                        ProgressView("Cargando datos del cargador…")
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                    }
+                }
                 Section("Temporizador de carga") {
                     DatePicker("Hora de inicio", selection: $startTime, displayedComponents: .hourAndMinute)
                     DatePicker("Hora de fin", selection: $endTime, displayedComponents: .hourAndMinute)
@@ -203,8 +209,12 @@ private struct ProgrammingView: View {
                     DatePicker("Hasta", selection: $endTime, displayedComponents: .hourAndMinute)
                     Button("Guardar horario semanal") { model.setWeeklySchedule(makeSchedule()) }
                         .disabled(model.isCommandRunning || !selectedDays.contains(true))
-                    Button("Leer horario del cargador") { model.requestWeeklySchedule() }
-                        .disabled(model.isCommandRunning)
+                    if model.isLoadingWeeklySchedule {
+                        ProgressView("Leyendo horario…")
+                    } else {
+                        Button("Leer horario del cargador") { model.requestWeeklySchedule() }
+                            .disabled(model.isCommandRunning)
+                    }
                     if let schedule = model.weeklySchedule {
                         Text("Configurado: \(schedule.startTime)–\(schedule.endTime)")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -219,7 +229,9 @@ private struct ProgrammingView: View {
                         .disabled(model.isCommandRunning)
                 }
                 if let optionsError { Section("Revisa los datos") { Text(optionsError).foregroundStyle(.red) } }
-                if let error = model.errorMessage { Section("Problema") { Text(error).foregroundStyle(.red) } }
+                if !model.isLoadingInitialData, !model.isLoadingWeeklySchedule, let error = model.errorMessage {
+                    Section("Problema") { Text(error).foregroundStyle(.red) }
+                }
             }
             .bottomNavigationClearance()
             .navigationTitle("Programación")
@@ -267,6 +279,12 @@ private struct ChargerSettingsTab: View {
     var body: some View {
         NavigationStack {
             Form {
+                if model.isLoadingInitialData {
+                    Section {
+                        ProgressView("Cargando datos del cargador…")
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                    }
+                }
                 Section("Inicio de carga") {
                     Toggle("RFID", isOn: rfidBinding)
                         .disabled(model.isCommandRunning)
@@ -294,7 +312,7 @@ private struct ChargerSettingsTab: View {
                         }
                     }
                 }
-                if let error = model.errorMessage {
+                if !model.isLoadingInitialData, let error = model.errorMessage {
                     Section("Problema") { Text(error).foregroundStyle(.red) }
                 }
             }
@@ -433,6 +451,12 @@ private struct ConnectionsTab: View {
     var body: some View {
         NavigationStack {
             Form {
+                if model.isLoadingInitialData {
+                    Section {
+                        ProgressView("Cargando datos del cargador…")
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                    }
+                }
                 Section("Gestionar cargadores") {
                     if model.chargers.isEmpty {
                         Text("Todavía no has añadido ningún cargador.")
