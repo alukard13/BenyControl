@@ -30,6 +30,7 @@ final class ChargerViewModel: ObservableObject {
     @Published private(set) var chargeStartMode: BenyChargeStartMode?
     @Published private(set) var chargeStartModeReadResult: String?
     @Published private(set) var genericChargeStartModeReadResult: String?
+    @Published private(set) var chargeStartModeProbeResults: [String] = []
     @Published var isConnected = false
     @Published var isWorking = false
     @Published private(set) var isCommandRunning = false
@@ -151,6 +152,11 @@ final class ChargerViewModel: ObservableObject {
     func probeGenericChargeStartModeRead() {
         runExclusive { service in
             self.genericChargeStartModeReadResult = try await service.probeGenericChargeStartModeRead()
+        }
+    }
+    func probeChargeStartModeReadCandidates() {
+        runExclusive { service in
+            self.chargeStartModeProbeResults = await service.probeChargeStartModeReadCandidates()
         }
     }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) {
@@ -348,6 +354,7 @@ final class ChargerViewModel: ObservableObject {
         }
         chargeStartModeReadResult = nil
         genericChargeStartModeReadResult = nil
+        chargeStartModeProbeResults = []
         isConnected = false
         errorMessage = nil
     }

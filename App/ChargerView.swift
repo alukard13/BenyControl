@@ -164,6 +164,15 @@ private struct ChargingOptionsView: View {
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
                     }
+                    Button("Probar varias consultas de lectura") {
+                        model.probeChargeStartModeReadCandidates()
+                    }
+                    .disabled(model.isCommandRunning)
+                    ForEach(Array(model.chargeStartModeProbeResults.enumerated()), id: \.offset) { _, result in
+                        Text(result)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
                 }
                 Section("Temporizador de carga") {
                     DatePicker("Hora de inicio", selection: $startTime, displayedComponents: .hourAndMinute)
