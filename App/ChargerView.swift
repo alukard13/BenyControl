@@ -53,7 +53,7 @@ struct ChargerView: View {
                     }
                 }
             }
-            .navigationTitle("BENY Charger")
+            .navigationTitle(model.activeChargerName)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Ajustes") { showSettings = true } } }
             .sheet(isPresented: $showSettings) { SettingsView(model: model, isPresented: $showSettings) }
             .task { await model.refreshAutomatically() }
@@ -152,19 +152,154 @@ private struct PowerGaugeView: View {
 private struct SettingsView: View {
     @ObservedObject var model: ChargerViewModel
     @Binding var isPresented: Bool
+    @State private var editingCharger: BenyChargerProfile?
+    @State private var chargerToDelete: BenyChargerProfile?
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
             Form {
-                TextField("Dirección IP", text: $model.ipAddress).textInputAutocapitalization(.never).keyboardType(.numbersAndPunctuation)
-                TextField("Puerto UDP", text: $model.portText).keyboardType(.numberPad)
-                TextField("Número de serie", text: $model.serialNumber).keyboardType(.numberPad)
-                SecureField("PIN de 6 dígitos", text: $model.pin).keyboardType(.numberPad)
-                Button("Probar conexión") { model.testConnection() }.disabled(model.isCommandRunning)
-                Button("Guardar") { model.save(); if model.errorMessage == nil { isPresented = false } }
+                Section("Gestionar cargadores") {
+                    if model.chargers.isEmpty {
+                        Text("Todavía no has añadido ningún cargador.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(model.chargers) { charger in
+                        HStack(spacing: 12) {
+                            Button {
+                                Task { await model.selectCharger(charger.id) }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(charger.name).foregroundStyle(.primary)
+                                        Text(charger.ipAddress.isEmpty ? "Sin dirección IP" : charger.ipAddress)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 8)
+                                    if charger.id == model.activeChargerID {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.tint)
+                                            .accessibilityLabel("Cargador activo")
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                editingCharger = charger
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .frame(width: 36, height: 36)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Editar \(charger.name)")
+                        }
+                        .disabled(model.isCommandRunning)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                chargerToDelete = charger
+                            } label: {
+                                Label("Eliminar", systemImage: "trash")
+                            }
+                        }
+                    }
+                    Button {
+                        editingCharger = BenyChargerProfile.empty(name: model.chargers.isEmpty ? "Mi cargador" : "Cargador nuevo")
+                    } label: {
+                        Label("Añadir cargador", systemImage: "plus.circle.fill")
+                    }
+                    .disabled(model.isCommandRunning)
+                }
+                if let errorMessage {
+                    Section("Problema") { Text(errorMessage).foregroundStyle(.red) }
+                }
             }
             .navigationTitle("Ajustes")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Listo") { isPresented = false } } }
+            .sheet(item: $editingCharger) { charger in
+                ChargerEditorView(model: model, charger: charger)
+            }
+            .confirmationDialog(
+                "¿Eliminar este cargador?",
+                isPresented: Binding(
+                    get: { chargerToDelete != nil },
+                    set: { if !$0 { chargerToDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Eliminar", role: .destructive) {
+                    guard let chargerToDelete else { return }
+                    Task {
+                        errorMessage = await model.deleteCharger(chargerToDelete.id)
+                        self.chargerToDelete = nil
+                    }
+                }
+                Button("Cancelar", role: .cancel) { chargerToDelete = nil }
+            } message: {
+                Text("Se eliminarán su nombre, su configuración y su PIN guardado.")
+            }
+        }
+    }
+}
+
+private struct ChargerEditorView: View {
+    @ObservedObject var model: ChargerViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: BenyChargerProfile
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+
+    init(model: ChargerViewModel, charger: BenyChargerProfile) {
+        self.model = model
+        _draft = State(initialValue: charger)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Identificación") {
+                    TextField("Nombre personalizado", text: $draft.name)
+                        .textInputAutocapitalization(.words)
+                }
+                Section("Conexión") {
+                    TextField("Dirección IP", text: $draft.ipAddress)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.numbersAndPunctuation)
+                    TextField("Puerto UDP", text: $draft.portText)
+                        .keyboardType(.numberPad)
+                    TextField("Número de serie (9 dígitos)", text: $draft.serialNumber)
+                        .keyboardType(.numberPad)
+                    SecureField("PIN (6 dígitos)", text: $draft.pin)
+                        .keyboardType(.numberPad)
+                }
+                if let errorMessage {
+                    Section("Revisa los datos") { Text(errorMessage).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle(draft.name.isEmpty ? "Nuevo cargador" : draft.name)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") { save() }
+                        .disabled(isSaving || model.isCommandRunning)
+                }
+            }
+            .interactiveDismissDisabled(isSaving)
+        }
+    }
+
+    private func save() {
+        isSaving = true
+        Task {
+            let result = await model.saveCharger(draft)
+            isSaving = false
+            if let result {
+                errorMessage = result
+            } else {
+                dismiss()
+            }
         }
     }
 }

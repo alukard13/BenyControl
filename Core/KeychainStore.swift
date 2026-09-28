@@ -3,19 +3,42 @@ import Security
 
 enum KeychainStore {
     private static let service = "com.example.BenyControl"
-    private static let account = "charger-pin"
+    private static let legacyAccount = "charger-pin"
 
     static func savePIN(_ pin: String) throws {
+        try savePIN(pin, account: legacyAccount)
+    }
+
+    static func savePIN(_ pin: String, for chargerID: UUID) throws {
+        try savePIN(pin, account: account(for: chargerID))
+    }
+
+    static func loadPIN() throws -> String {
+        try loadPIN(account: legacyAccount)
+    }
+
+    static func loadPIN(for chargerID: UUID) throws -> String {
+        try loadPIN(account: account(for: chargerID))
+    }
+
+    static func deletePIN(for chargerID: UUID) throws {
+        let status = SecItemDelete(query(account: account(for: chargerID)) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError(status: status)
+        }
+    }
+
+    private static func savePIN(_ pin: String, account: String) throws {
         let data = Data(pin.utf8)
-        SecItemDelete(query() as CFDictionary)
-        let addQuery = query().merging([kSecValueData: data]) { _, newValue in newValue }
+        SecItemDelete(query(account: account) as CFDictionary)
+        let addQuery = query(account: account).merging([kSecValueData: data]) { _, newValue in newValue }
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
-    static func loadPIN() throws -> String {
+    private static func loadPIN(account: String) throws -> String {
         var result: CFTypeRef?
-        let lookupQuery = query().merging([
+        let lookupQuery = query(account: account).merging([
             kSecReturnData: true,
             kSecMatchLimit: kSecMatchLimitOne
         ]) { _, newValue in newValue }
@@ -27,7 +50,11 @@ enum KeychainStore {
         return pin
     }
 
-    private static func query() -> [CFString: Any] {
+    private static func account(for chargerID: UUID) -> String {
+        "charger-pin-\(chargerID.uuidString)"
+    }
+
+    private static func query(account: String) -> [CFString: Any] {
         [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account]
     }
 
