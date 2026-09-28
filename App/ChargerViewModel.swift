@@ -121,6 +121,12 @@ final class ChargerViewModel: ObservableObject {
             if !isCommandRunning, hasValidConfiguration {
                 await perform { service in
                     self.dashboard = try await service.refresh()
+                    if let mode = self.dashboard.chargeStartMode {
+                        self.chargeStartMode = mode
+                        if let id = self.activeChargerID {
+                            self.defaults.set(mode.rawValue, forKey: self.chargeStartModeKey(id: id))
+                        }
+                    }
                     self.isConnected = true
                 }
             }

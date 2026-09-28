@@ -98,6 +98,7 @@ enum BenyResponse: Equatable {
     case model(String)
     case values(BenyChargerValues)
     case status(BenyChargerStatus)
+    case chargeStartMode(BenyChargeStartMode)
 }
 
 /// Port exact of the ASCII-hex UDP protocol in Jarauvi/beny_wifi.
@@ -246,6 +247,9 @@ enum BenyProtocol {
         guard let packet = String(data: data, encoding: .ascii), validateChecksum(packet) else {
             throw BenyProtocolError.checksumMismatch
         }
+        if packet.hasPrefix("55aa7100") {
+            return .chargeStartMode(try parseChargeStartModeSettings(packet))
+        }
         guard packet.count >= 12, let identifier = hexInt(packet, 6, 10) else {
             throw BenyProtocolError.malformedPacket
         }
@@ -257,6 +261,23 @@ enum BenyProtocol {
         case 21: return .status(try parseStatus(packet))
         case 32: return .model(try parseModel(packet))
         default: throw BenyProtocolError.unsupportedPacket
+        }
+    }
+
+    private static func parseChargeStartModeSettings(_ packet: String) throws -> BenyChargeStartMode {
+        // In Z-Box's 0x71 settings response these adjacent flags are RFID and app control.
+        // Captures of 0x6a writes confirm 00, 10, 01, and 11 combinations in that order.
+        guard packet.count >= 18,
+              let rfid = hexInt(packet, 12, 14), (0...1).contains(rfid),
+              let app = hexInt(packet, 14, 16), (0...1).contains(app) else {
+            throw BenyProtocolError.malformedPacket
+        }
+        switch (rfid, app) {
+        case (0, 0): return .connectAndStart
+        case (1, 0): return .rfid
+        case (0, 1): return .app
+        case (1, 1): return .rfidAndApp
+        default: throw BenyProtocolError.malformedPacket
         }
     }
 

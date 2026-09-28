@@ -15,6 +15,7 @@ struct BenyDashboard: Equatable {
     var model = "BENY Charger"
     var values: BenyChargerValues?
     var status = BenyChargerStatus(activeFaults: [])
+    var chargeStartMode: BenyChargeStartMode?
 }
 
 struct BenyDebugEvent: Identifiable, Sendable {
@@ -52,6 +53,10 @@ actor BenyChargerService {
         }
         if case .status(let status) = try await send(BenyProtocol.statusRequest(pin: configuration.pin)) {
             dashboard.status = status
+        }
+        if let response = try? await send(BenyProtocol.directSettingsReadRequest(pin: configuration.pin)),
+           case .chargeStartMode(let mode) = response {
+            dashboard.chargeStartMode = mode
         }
         return dashboard
     }
