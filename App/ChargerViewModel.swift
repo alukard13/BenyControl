@@ -26,6 +26,7 @@ final class ChargerViewModel: ObservableObject {
     @Published private(set) var chargers: [BenyChargerProfile]
     @Published private(set) var activeChargerID: UUID?
     @Published var dashboard = BenyDashboard()
+    @Published private(set) var weeklySchedule: BenyWeeklySchedule?
     @Published var isConnected = false
     @Published var isWorking = false
     @Published private(set) var isCommandRunning = false
@@ -128,6 +129,40 @@ final class ChargerViewModel: ObservableObject {
     func startCharging() { control { try await $0.startCharging() } }
     func stopCharging() { control { try await $0.stopCharging() } }
     func setCurrent(_ amps: Int) { control { try await $0.setMaxCurrent(amps) } }
+    func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) {
+        control { try await $0.setTimer(startHour: startHour, startMinute: startMinute, endHour: endHour, endMinute: endMinute) }
+    }
+    func resetTimer() { control { try await $0.resetTimer() } }
+    func setWeeklySchedule(_ schedule: BenyWeeklySchedule) {
+        control {
+            try await $0.setWeeklySchedule(schedule)
+            self.weeklySchedule = schedule
+        }
+    }
+    func requestWeeklySchedule() {
+        runExclusive { service in self.weeklySchedule = try await service.requestWeeklySchedule() }
+    }
+    func setMonthlyEnergyLimit(_ kilowattHours: Int) {
+        control {
+            try await $0.setMonthlyEnergyLimit(kilowattHours)
+            if let id = self.activeChargerID {
+                self.defaults.set(String(kilowattHours), forKey: self.energyLimitKey(id: id, monthly: true))
+            }
+        }
+    }
+    func setSessionEnergyLimit(_ kilowattHours: Int) {
+        control {
+            try await $0.setSessionEnergyLimit(kilowattHours)
+            if let id = self.activeChargerID {
+                self.defaults.set(String(kilowattHours), forKey: self.energyLimitKey(id: id, monthly: false))
+            }
+        }
+    }
+
+    func savedEnergyLimit(monthly: Bool) -> String {
+        guard let id = activeChargerID else { return "" }
+        return defaults.string(forKey: energyLimitKey(id: id, monthly: monthly)) ?? ""
+    }
 
     func saveCharger(_ draft: BenyChargerProfile) async -> String? {
         guard !isCommandRunning else { return "Espera a que termine la operación actual." }
@@ -283,8 +318,13 @@ final class ChargerViewModel: ObservableObject {
 
     private func resetActiveChargerState() {
         dashboard = BenyDashboard()
+        weeklySchedule = nil
         isConnected = false
         errorMessage = nil
+    }
+
+    private func energyLimitKey(id: UUID, monthly: Bool) -> String {
+        "charger.\(id.uuidString).energyLimit.\(monthly ? "monthly" : "session")"
     }
 
     private func persistProfiles() {

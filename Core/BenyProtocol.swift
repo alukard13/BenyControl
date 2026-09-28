@@ -3,6 +3,9 @@ import Foundation
 enum BenyProtocolError: LocalizedError, Equatable {
     case invalidPIN
     case invalidCurrent
+    case invalidTime
+    case invalidWeeklySchedule
+    case invalidEnergyLimit
     case malformedPacket
     case checksumMismatch
     case accessDenied
@@ -12,6 +15,9 @@ enum BenyProtocolError: LocalizedError, Equatable {
         switch self {
         case .invalidPIN: return "El PIN debe tener exactamente seis dígitos."
         case .invalidCurrent: return "La corriente máxima debe estar entre 6 y 32 A."
+        case .invalidTime: return "La hora debe estar entre 00:00 y 23:59."
+        case .invalidWeeklySchedule: return "Selecciona al menos un día y un intervalo horario válido."
+        case .invalidEnergyLimit: return "El límite de energía está fuera del rango admitido."
         case .malformedPacket: return "El cargador devolvió un paquete con formato inválido."
         case .checksumMismatch: return "El checksum de la respuesta no es válido."
         case .accessDenied: return "El cargador rechazó el PIN."
@@ -23,6 +29,7 @@ enum BenyProtocolError: LocalizedError, Equatable {
 enum BenyRequestType: UInt8 {
     case model = 4
     case status = 110
+    case settings = 113
     case values = 112
 }
 
@@ -50,6 +57,17 @@ struct BenyChargerValues: Equatable {
     let totalEnergyKilowattHours: Double
     let temperatureCelsius: Int
     let maxCurrentAmps: Int
+    let timerState: Int?
+    let timerStartTime: String?
+    let timerEndTime: String?
+    let maxSessionConsumptionKilowattHours: Int?
+}
+
+struct BenyWeeklySchedule: Equatable {
+    /// Monday through Sunday.
+    let weekdays: [Bool]
+    let startTime: String
+    let endTime: String
 }
 
 struct BenyChargerStatus: Equatable {
@@ -67,6 +85,11 @@ enum BenyProtocol {
     private static let requestTemplate = "55aa10000b000[pin][requestType][checksum]"
     private static let commandTemplate = "55aa10000c000[pin]06[command][checksum]"
     private static let currentTemplate = "55aa10000d000[pin]6d00[current][checksum]"
+    private static let timerTemplate = "55aa10001c000[pin]6900016008000[endTimerSet][startHour][startMinute]00[endHour][endMinute]0017153b[checksum]"
+    private static let weeklyScheduleTemplate = "55aa100016000[pin]7519010e0f2725[weekdays][startHour][startMinute][endHour][endMinute][checksum]"
+    private static let monthlyLimitTemplate = "55aa10000d000[pin]78[limit][checksum]"
+    private static let sessionLimitTemplate = "55aa10000c000[pin]74[limit][checksum]"
+    private static let resetTimerTemplate = "55aa10001c000[pin]690000000000000000000000000000171035[checksum]"
 
     static func valuesRequest(pin: String) throws -> Data {
         try request(pin: pin, type: .values)
@@ -78,6 +101,10 @@ enum BenyProtocol {
 
     static func statusRequest(pin: String) throws -> Data {
         try request(pin: pin, type: .status)
+    }
+
+    static func weeklyScheduleRequest(pin: String) throws -> Data {
+        try request(pin: pin, type: .settings)
     }
 
     static func startRequest(pin: String) throws -> Data {
@@ -94,6 +121,81 @@ enum BenyProtocol {
             "pin": try pinHex(pin),
             "current": String(format: "%02x", amps)
         ])
+    }
+
+    static func setTimerRequest(pin: String, startHour: Int, startMinute: Int, endHour: Int? = nil, endMinute: Int? = nil) throws -> Data {
+        guard validTime(startHour, startMinute) else { throw BenyProtocolError.invalidTime }
+        if let endHour, let endMinute {
+            guard validTime(endHour, endMinute) else { throw BenyProtocolError.invalidTime }
+        } else if endHour != nil || endMinute != nil {
+            throw BenyProtocolError.invalidTime
+        }
+        return try build(template: timerTemplate, parameters: [
+            "pin": try pinHex(pin),
+            "endTimerSet": endHour == nil ? "00000" : "11111",
+            "startHour": String(format: "%02x", startHour),
+            "startMinute": String(format: "%02x", startMinute),
+            "endHour": String(format: "%02x", endHour ?? 0),
+            "endMinute": String(format: "%02x", endMinute ?? 0)
+        ])
+    }
+
+    static func resetTimerRequest(pin: String) throws -> Data {
+        try build(template: resetTimerTemplate, parameters: ["pin": try pinHex(pin)])
+    }
+
+    static func setWeeklyScheduleRequest(pin: String, weekdays: [Bool], startHour: Int, startMinute: Int, endHour: Int, endMinute: Int) throws -> Data {
+        guard weekdays.count == 7, weekdays.contains(true),
+              validTime(startHour, startMinute), validTime(endHour, endMinute),
+              startHour != endHour || startMinute != endMinute else {
+            throw BenyProtocolError.invalidWeeklySchedule
+        }
+        let mask = weekdays.enumerated().reduce(into: 0) { result, item in
+            let bit = (item.offset + 1) % 7 // Monday is bit 1; Sunday is bit 0.
+            if item.element { result |= 1 << bit }
+        }
+        return try build(template: weeklyScheduleTemplate, parameters: [
+            "pin": try pinHex(pin),
+            "weekdays": String(format: "%02x", mask),
+            "startHour": String(format: "%02x", startHour),
+            "startMinute": String(format: "%02x", startMinute),
+            "endHour": String(format: "%02x", endHour),
+            "endMinute": String(format: "%02x", endMinute)
+        ])
+    }
+
+    static func setMonthlyEnergyLimitRequest(pin: String, kilowattHours: Int) throws -> Data {
+        guard (0...65_535).contains(kilowattHours) else { throw BenyProtocolError.invalidEnergyLimit }
+        return try build(template: monthlyLimitTemplate, parameters: [
+            "pin": try pinHex(pin), "limit": String(format: "%04x", kilowattHours)
+        ])
+    }
+
+    static func setSessionEnergyLimitRequest(pin: String, kilowattHours: Int) throws -> Data {
+        guard (0...255).contains(kilowattHours) else { throw BenyProtocolError.invalidEnergyLimit }
+        return try build(template: sessionLimitTemplate, parameters: [
+            "pin": try pinHex(pin), "limit": String(format: "%02x", kilowattHours)
+        ])
+    }
+
+    static func parseWeeklySchedule(_ data: Data) throws -> BenyWeeklySchedule {
+        guard let packet = String(data: data, encoding: .ascii), validateChecksum(packet),
+              packet.count >= 42, hexInt(packet, 4, 6) == Int(BenyRequestType.settings.rawValue),
+              let weekdayMask = hexInt(packet, 30, 32),
+              let startHour = hexInt(packet, 32, 34), let startMinute = hexInt(packet, 34, 36),
+              let endHour = hexInt(packet, 36, 38), let endMinute = hexInt(packet, 38, 40),
+              validTime(startHour, startMinute), validTime(endHour, endMinute) else {
+            throw BenyProtocolError.malformedPacket
+        }
+        let weekdays = (0..<7).map { index in
+            let bit = (index + 1) % 7
+            return weekdayMask & (1 << bit) != 0
+        }
+        return BenyWeeklySchedule(
+            weekdays: weekdays,
+            startTime: String(format: "%02d:%02d", startHour, startMinute),
+            endTime: String(format: "%02d:%02d", endHour, endMinute)
+        )
     }
 
     static func parse(_ data: Data) throws -> BenyResponse {
@@ -185,8 +287,21 @@ enum BenyProtocol {
         return BenyChargerValues(
             state: state, currentAmps: current, voltageVolts: voltage,
             powerKilowatts: Double(power) / 10, totalEnergyKilowattHours: Double(totalEnergy) / 10,
-            temperatureCelsius: rawTemperature - 100, maxCurrentAmps: maxCurrent
+            temperatureCelsius: rawTemperature - 100, maxCurrentAmps: maxCurrent,
+            timerState: hexInt(packet, 32, 34),
+            timerStartTime: formattedTime(hour: hexInt(packet, 34, 36), minute: hexInt(packet, 36, 38)),
+            timerEndTime: formattedTime(hour: hexInt(packet, 40, 42), minute: hexInt(packet, 42, 44)),
+            maxSessionConsumptionKilowattHours: hexInt(packet, 48, 50)
         )
+    }
+
+    private static func validTime(_ hour: Int, _ minute: Int) -> Bool {
+        (0...23).contains(hour) && (0...59).contains(minute)
+    }
+
+    private static func formattedTime(hour: Int?, minute: Int?) -> String? {
+        guard let hour, let minute, validTime(hour, minute) else { return nil }
+        return String(format: "%02d:%02d", hour, minute)
     }
 
     private static func parseStatus(_ packet: String) throws -> BenyChargerStatus {

@@ -3,6 +3,7 @@ import SwiftUI
 struct ChargerView: View {
     @StateObject private var model = ChargerViewModel()
     @State private var showSettings = false
+    @State private var showChargingOptions = false
     @State private var confirmStart = false
 
     var body: some View {
@@ -30,6 +31,11 @@ struct ChargerView: View {
                     LabeledContent("Alertas", value: model.dashboard.status.activeFaults.isEmpty ? "Ninguna" : model.dashboard.status.activeFaults.joined(separator: ", "))
                 }
                 Section {
+                    Button { showChargingOptions = true } label: {
+                        Label("Programación y límites", systemImage: "calendar.badge.clock")
+                    }
+                }
+                Section {
                     Button("Iniciar carga") { confirmStart = true }.disabled(model.isCommandRunning)
                     Button("Detener carga", role: .destructive) { model.stopCharging() }.disabled(model.isCommandRunning)
                     HStack {
@@ -54,8 +60,12 @@ struct ChargerView: View {
                 }
             }
             .navigationTitle(model.activeChargerName)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Ajustes") { showSettings = true } } }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { ChargerLogoMark().frame(width: 34, height: 40).accessibilityLabel("Logotipo BenyControl") }
+                ToolbarItem(placement: .topBarTrailing) { Button("Ajustes") { showSettings = true } }
+            }
             .sheet(isPresented: $showSettings) { SettingsView(model: model, isPresented: $showSettings) }
+            .sheet(isPresented: $showChargingOptions) { ChargingOptionsView(model: model) }
             .task { await model.refreshAutomatically() }
             .confirmationDialog("¿Iniciar la carga?", isPresented: $confirmStart, titleVisibility: .visible) {
                 Button("Iniciar carga") { model.startCharging() }
@@ -69,6 +79,134 @@ struct ChargerView: View {
     private func adjustCurrent(_ delta: Int) {
         let current = model.dashboard.values?.maxCurrentAmps ?? 16
         model.setCurrent(min(32, max(6, current + delta)))
+    }
+}
+
+private struct ChargerLogoMark: View {
+    var body: some View {
+        ZStack {
+            Path { path in
+                path.move(to: CGPoint(x: 9, y: 14))
+                path.addCurve(to: CGPoint(x: 5, y: 31), control1: CGPoint(x: -2, y: 22), control2: CGPoint(x: 0, y: 32))
+                path.addCurve(to: CGPoint(x: 29, y: 31), control1: CGPoint(x: 10, y: 42), control2: CGPoint(x: 28, y: 41))
+                path.addCurve(to: CGPoint(x: 27, y: 14), control1: CGPoint(x: 36, y: 28), control2: CGPoint(x: 36, y: 20))
+            }
+            .stroke(Color.cyan.opacity(0.75), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(LinearGradient(colors: [Color(white: 0.24), Color(white: 0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.24), lineWidth: 1))
+                .frame(width: 18, height: 31)
+                .overlay(alignment: .center) {
+                    VStack(spacing: 2) {
+                        HStack(spacing: 1.5) { ForEach(0..<3) { _ in Capsule().fill(Color.cyan).frame(width: 2, height: 6) } }
+                        Capsule().fill(Color.cyan.opacity(0.6)).frame(width: 2, height: 10)
+                    }
+                }
+                .offset(y: -2)
+        }
+        .frame(width: 34, height: 40)
+    }
+}
+
+private struct ChargingOptionsView: View {
+    @ObservedObject var model: ChargerViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var startTime = Calendar.current.date(from: DateComponents(hour: 22, minute: 0)) ?? .now
+    @State private var endTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 0)) ?? .now
+    @State private var selectedDays = Array(repeating: true, count: 7)
+    @State private var monthlyLimit = ""
+    @State private var sessionLimit = ""
+    @State private var optionsError: String?
+    private let dayNames = ["L", "M", "X", "J", "V", "S", "D"]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Modos de inicio") {
+                    Label("Desde la app: usa Iniciar carga y Detener carga en la pantalla principal.", systemImage: "iphone")
+                    Text("El inicio con tarjeta RFID o automático se configura directamente en el cargador o en Z-Box.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("Temporizador de carga") {
+                    DatePicker("Hora de inicio", selection: $startTime, displayedComponents: .hourAndMinute)
+                    DatePicker("Hora de fin", selection: $endTime, displayedComponents: .hourAndMinute)
+                    Button("Programar temporizador") {
+                        model.setTimer(startHour: hour(startTime), startMinute: minute(startTime), endHour: hour(endTime), endMinute: minute(endTime))
+                    }.disabled(model.isCommandRunning)
+                    Button("Cancelar temporizador", role: .destructive) { model.resetTimer() }
+                        .disabled(model.isCommandRunning)
+                }
+                Section("Horario semanal") {
+                    HStack {
+                        ForEach(0..<7, id: \.self) { index in
+                            Button(dayNames[index]) { selectedDays[index].toggle() }
+                                .font(.caption.weight(.bold))
+                                .frame(maxWidth: .infinity, minHeight: 36)
+                                .background(selectedDays[index] ? Color.accentColor : Color.secondary.opacity(0.15), in: Circle())
+                                .foregroundStyle(selectedDays[index] ? .white : .primary)
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("\(["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"][index]): \(selectedDays[index] ? "seleccionado" : "no seleccionado")")
+                        }
+                    }
+                    DatePicker("Desde", selection: $startTime, displayedComponents: .hourAndMinute)
+                    DatePicker("Hasta", selection: $endTime, displayedComponents: .hourAndMinute)
+                    Button("Guardar horario semanal") { model.setWeeklySchedule(makeSchedule()) }
+                        .disabled(model.isCommandRunning || !selectedDays.contains(true))
+                    Button("Leer horario del cargador") { model.requestWeeklySchedule() }
+                        .disabled(model.isCommandRunning)
+                    if let schedule = model.weeklySchedule {
+                        Text("Configurado: \(schedule.startTime)–\(schedule.endTime)")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                Section("Límites de energía") {
+                    TextField("Límite mensual (kWh, 0–65535)", text: $monthlyLimit).keyboardType(.numberPad)
+                    Button("Guardar límite mensual") { saveLimit(monthly: true) }
+                        .disabled(model.isCommandRunning)
+                    TextField("Límite por sesión (kWh, 0–255)", text: $sessionLimit).keyboardType(.numberPad)
+                    Button("Guardar límite por sesión") { saveLimit(monthly: false) }
+                        .disabled(model.isCommandRunning)
+                }
+                if let optionsError { Section("Revisa los datos") { Text(optionsError).foregroundStyle(.red) } }
+                if let error = model.errorMessage { Section("Problema") { Text(error).foregroundStyle(.red) } }
+            }
+            .navigationTitle("Carga programada")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Listo") { dismiss() } } }
+            .onAppear {
+                monthlyLimit = model.savedEnergyLimit(monthly: true)
+                sessionLimit = model.savedEnergyLimit(monthly: false)
+                if let start = model.dashboard.values?.timerStartTime { startTime = date(from: start) }
+                if let end = model.dashboard.values?.timerEndTime { endTime = date(from: end) }
+                model.requestWeeklySchedule()
+            }
+            .onChange(of: model.weeklySchedule) { schedule in
+                guard let schedule else { return }
+                selectedDays = schedule.weekdays
+                startTime = date(from: schedule.startTime)
+                endTime = date(from: schedule.endTime)
+            }
+        }
+    }
+
+    private func hour(_ date: Date) -> Int { Calendar.current.component(.hour, from: date) }
+    private func minute(_ date: Date) -> Int { Calendar.current.component(.minute, from: date) }
+    private func date(from value: String) -> Date {
+        let parts = value.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return .now }
+        return Calendar.current.date(from: DateComponents(hour: parts[0], minute: parts[1])) ?? .now
+    }
+    private func makeSchedule() -> BenyWeeklySchedule {
+        func formatted(_ date: Date) -> String { String(format: "%02d:%02d", hour(date), minute(date)) }
+        return BenyWeeklySchedule(weekdays: selectedDays, startTime: formatted(startTime), endTime: formatted(endTime))
+    }
+    private func saveLimit(monthly: Bool) {
+        guard let value = Int(monthly ? monthlyLimit : sessionLimit), value >= 0,
+              value <= (monthly ? 65_535 : 255) else {
+            optionsError = monthly ? "Introduce un número entre 0 y 65535 kWh." : "Introduce un número entre 0 y 255 kWh."
+            return
+        }
+        optionsError = nil
+        if monthly { model.setMonthlyEnergyLimit(value) } else { model.setSessionEnergyLimit(value) }
     }
 }
 

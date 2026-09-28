@@ -59,6 +59,34 @@ actor BenyChargerService {
     func startCharging() async throws { try await sendControl(BenyProtocol.startRequest(pin: configuration.pin)) }
     func stopCharging() async throws { try await sendControl(BenyProtocol.stopRequest(pin: configuration.pin)) }
     func setMaxCurrent(_ amps: Int) async throws { try await sendControl(BenyProtocol.setMaxCurrentRequest(pin: configuration.pin, amps: amps)) }
+    func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) async throws {
+        try await sendControl(BenyProtocol.setTimerRequest(pin: configuration.pin, startHour: startHour, startMinute: startMinute, endHour: endHour, endMinute: endMinute))
+    }
+    func resetTimer() async throws { try await sendControl(BenyProtocol.resetTimerRequest(pin: configuration.pin)) }
+    func setWeeklySchedule(_ schedule: BenyWeeklySchedule) async throws {
+        let start = schedule.startTime.split(separator: ":").compactMap { Int($0) }
+        let end = schedule.endTime.split(separator: ":").compactMap { Int($0) }
+        guard start.count == 2, end.count == 2 else { throw BenyProtocolError.invalidWeeklySchedule }
+        try await sendControl(BenyProtocol.setWeeklyScheduleRequest(
+            pin: configuration.pin,
+            weekdays: schedule.weekdays,
+            startHour: start[0], startMinute: start[1],
+            endHour: end[0], endMinute: end[1]
+        ))
+    }
+    func setMonthlyEnergyLimit(_ kilowattHours: Int) async throws {
+        try await sendControl(BenyProtocol.setMonthlyEnergyLimitRequest(pin: configuration.pin, kilowattHours: kilowattHours))
+    }
+    func setSessionEnergyLimit(_ kilowattHours: Int) async throws {
+        try await sendControl(BenyProtocol.setSessionEnergyLimitRequest(pin: configuration.pin, kilowattHours: kilowattHours))
+    }
+    func requestWeeklySchedule() async throws -> BenyWeeklySchedule {
+        let packet = try BenyProtocol.weeklyScheduleRequest(pin: configuration.pin)
+        trace?(BenyDebugEvent(timestamp: .now, direction: "→", hex: BenyProtocol.redactedHex(packet), detail: "Horario semanal solicitado"))
+        let reply = try await client.request(packet)
+        trace?(BenyDebugEvent(timestamp: .now, direction: "←", hex: String(data: reply, encoding: .ascii) ?? "<no ASCII>", detail: "Horario semanal recibido"))
+        return try BenyProtocol.parseWeeklySchedule(reply)
+    }
 
     private func send(_ packet: Data) async throws -> BenyResponse {
         trace?(BenyDebugEvent(timestamp: .now, direction: "→", hex: BenyProtocol.redactedHex(packet), detail: "Enviado"))
