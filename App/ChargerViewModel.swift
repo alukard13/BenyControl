@@ -28,6 +28,7 @@ final class ChargerViewModel: ObservableObject {
     @Published var dashboard = BenyDashboard()
     @Published private(set) var weeklySchedule: BenyWeeklySchedule?
     @Published private(set) var chargeStartMode: BenyChargeStartMode?
+    @Published private(set) var chargeStartModeReadResult: String?
     @Published var isConnected = false
     @Published var isWorking = false
     @Published private(set) var isCommandRunning = false
@@ -139,6 +140,11 @@ final class ChargerViewModel: ObservableObject {
             if let id = self.activeChargerID {
                 self.defaults.set(mode.rawValue, forKey: self.chargeStartModeKey(id: id))
             }
+        }
+    }
+    func probeChargeStartModeRead() {
+        runExclusive { service in
+            self.chargeStartModeReadResult = try await service.probeChargeStartModeRead()
         }
     }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) {
@@ -334,6 +340,7 @@ final class ChargerViewModel: ObservableObject {
         chargeStartMode = activeChargerID.flatMap { id in
             defaults.string(forKey: chargeStartModeKey(id: id)).flatMap(BenyChargeStartMode.init(rawValue:))
         }
+        chargeStartModeReadResult = nil
         isConnected = false
         errorMessage = nil
     }

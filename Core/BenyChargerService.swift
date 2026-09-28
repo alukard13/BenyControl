@@ -61,6 +61,14 @@ actor BenyChargerService {
     func setChargeStartMode(_ mode: BenyChargeStartMode) async throws {
         try await sendControl(BenyProtocol.setChargeStartModeRequest(pin: configuration.pin, mode: mode))
     }
+    func probeChargeStartModeRead() async throws -> String {
+        let packet = try BenyProtocol.chargeStartModeReadRequest(pin: configuration.pin)
+        trace?(BenyDebugEvent(timestamp: .now, direction: "→", hex: BenyProtocol.redactedHex(packet), detail: "Prueba de lectura de modo de inicio"))
+        let reply = try await client.request(packet)
+        let redactedReply = BenyProtocol.redactedHex(reply)
+        trace?(BenyDebugEvent(timestamp: .now, direction: "←", hex: redactedReply, detail: "Respuesta a prueba de lectura de modo"))
+        return redactedReply
+    }
     func setMaxCurrent(_ amps: Int) async throws { try await sendControl(BenyProtocol.setMaxCurrentRequest(pin: configuration.pin, amps: amps)) }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) async throws {
         try await sendControl(BenyProtocol.setTimerRequest(pin: configuration.pin, startHour: startHour, startMinute: startMinute, endHour: endHour, endMinute: endMinute))

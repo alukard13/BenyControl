@@ -144,6 +144,17 @@ private struct ChargingOptionsView: View {
                         Text("El cargador no informa del modo actual. Elige una opción para configurarlo y guardar el último modo enviado.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
+                    Button("Probar lectura del modo actual") {
+                        model.probeChargeStartModeRead()
+                    }
+                    .disabled(model.isCommandRunning)
+                    Text("Prueba una consulta inferida a partir del comando de escritura; no envía nuevos valores de modo.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if let result = model.chargeStartModeReadResult {
+                        LabeledContent("Respuesta del cargador", value: result)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
                 }
                 Section("Temporizador de carga") {
                     DatePicker("Hora de inicio", selection: $startTime, displayedComponents: .hourAndMinute)
