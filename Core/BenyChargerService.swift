@@ -69,6 +69,14 @@ actor BenyChargerService {
         trace?(BenyDebugEvent(timestamp: .now, direction: "←", hex: redactedReply, detail: "Respuesta a prueba de lectura de modo"))
         return redactedReply
     }
+    func probeGenericChargeStartModeRead() async throws -> String {
+        let packet = try BenyProtocol.genericChargeStartModeReadRequest(pin: configuration.pin)
+        trace?(BenyDebugEvent(timestamp: .now, direction: "→", hex: BenyProtocol.redactedHex(packet), detail: "Prueba de lectura genérica del modo de inicio"))
+        let reply = try await client.request(packet)
+        let redactedReply = BenyProtocol.redactedHex(reply)
+        trace?(BenyDebugEvent(timestamp: .now, direction: "←", hex: redactedReply, detail: "Respuesta a prueba genérica de modo"))
+        return redactedReply
+    }
     func setMaxCurrent(_ amps: Int) async throws { try await sendControl(BenyProtocol.setMaxCurrentRequest(pin: configuration.pin, amps: amps)) }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) async throws {
         try await sendControl(BenyProtocol.setTimerRequest(pin: configuration.pin, startHour: startHour, startMinute: startMinute, endHour: endHour, endMinute: endMinute))

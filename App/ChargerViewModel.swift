@@ -29,6 +29,7 @@ final class ChargerViewModel: ObservableObject {
     @Published private(set) var weeklySchedule: BenyWeeklySchedule?
     @Published private(set) var chargeStartMode: BenyChargeStartMode?
     @Published private(set) var chargeStartModeReadResult: String?
+    @Published private(set) var genericChargeStartModeReadResult: String?
     @Published var isConnected = false
     @Published var isWorking = false
     @Published private(set) var isCommandRunning = false
@@ -145,6 +146,11 @@ final class ChargerViewModel: ObservableObject {
     func probeChargeStartModeRead() {
         runExclusive { service in
             self.chargeStartModeReadResult = try await service.probeChargeStartModeRead()
+        }
+    }
+    func probeGenericChargeStartModeRead() {
+        runExclusive { service in
+            self.genericChargeStartModeReadResult = try await service.probeGenericChargeStartModeRead()
         }
     }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) {
@@ -341,6 +347,7 @@ final class ChargerViewModel: ObservableObject {
             defaults.string(forKey: chargeStartModeKey(id: id)).flatMap(BenyChargeStartMode.init(rawValue:))
         }
         chargeStartModeReadResult = nil
+        genericChargeStartModeReadResult = nil
         isConnected = false
         errorMessage = nil
     }

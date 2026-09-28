@@ -112,6 +112,7 @@ enum BenyProtocol {
     private static let resetTimerTemplate = "55aa10001c000[pin]690000000000000000000000000000171035[checksum]"
     private static let chargeStartModeTemplate = "55aa6a000d000[pin]6a[rfid][app][checksum]"
     private static let chargeStartModeReadTemplate = "55aa6a000b000[pin]6a[checksum]"
+    private static let genericChargeStartModeReadTemplate = "55aa10000b000[pin]6a[checksum]"
 
     static func valuesRequest(pin: String) throws -> Data {
         try request(pin: pin, type: .values)
@@ -147,6 +148,10 @@ enum BenyProtocol {
 
     static func chargeStartModeReadRequest(pin: String) throws -> Data {
         try build(template: chargeStartModeReadTemplate, parameters: ["pin": try pinHex(pin)])
+    }
+
+    static func genericChargeStartModeReadRequest(pin: String) throws -> Data {
+        try build(template: genericChargeStartModeReadTemplate, parameters: ["pin": try pinHex(pin)])
     }
 
     static func setMaxCurrentRequest(pin: String, amps: Int) throws -> Data {

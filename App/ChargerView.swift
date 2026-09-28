@@ -155,6 +155,15 @@ private struct ChargingOptionsView: View {
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
                     }
+                    Button("Probar consulta genérica del modo") {
+                        model.probeGenericChargeStartModeRead()
+                    }
+                    .disabled(model.isCommandRunning)
+                    if let result = model.genericChargeStartModeReadResult {
+                        LabeledContent("Respuesta genérica", value: result)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
                 }
                 Section("Temporizador de carga") {
                     DatePicker("Hora de inicio", selection: $startTime, displayedComponents: .hourAndMinute)
