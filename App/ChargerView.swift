@@ -78,7 +78,15 @@ private struct BottomNavigationBar: View {
             }
         }
         .padding(5)
-        .background(.regularMaterial, in: Capsule())
+        .background {
+            if #available(iOS 26.0, *) {
+                Capsule()
+                    .fill(Color.clear)
+                    .glassEffect(.regular, in: Capsule())
+            } else {
+                Capsule().fill(.regularMaterial)
+            }
+        }
         .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 1))
         .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 3)
     }
@@ -102,9 +110,22 @@ private struct DashboardTab: View {
                     .accessibilityElement(children: .combine)
                 }
                 Section {
-                    PowerGaugeView(values: model.dashboard.values)
+                    if model.isLoadingInitialData {
+                        VStack(spacing: 14) {
+                            ProgressView()
+                                .controlSize(.large)
+                            Text("Cargando datos del cargador…")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 250)
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
+                    } else {
+                        PowerGaugeView(values: model.dashboard.values)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
                 }
                 Section("Estado") {
                     LabeledContent("Estado", value: model.dashboard.values?.state.displayName ?? "Sin datos")
@@ -123,13 +144,12 @@ private struct DashboardTab: View {
                         Button { adjustCurrent(1) } label: { Image(systemName: "plus.circle") }
                     }.disabled(model.isCommandRunning)
                 }
-                if let error = model.errorMessage { Section("Problema") { Text(error).foregroundStyle(.red) } }
+                if !model.isLoadingInitialData, let error = model.errorMessage {
+                    Section("Problema") { Text(error).foregroundStyle(.red) }
+                }
             }
             .bottomNavigationClearance()
             .navigationTitle(model.activeChargerName)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { ChargerLogoMark().frame(width: 34, height: 40).accessibilityLabel("Logotipo BenyControl") }
-            }
             .confirmationDialog("¿Iniciar la carga?", isPresented: $confirmStart, titleVisibility: .visible) {
                 Button("Iniciar carga") { model.startCharging() }
                 Button("Cancelar", role: .cancel) { }
@@ -142,32 +162,6 @@ private struct DashboardTab: View {
     private func adjustCurrent(_ delta: Int) {
         let current = model.dashboard.values?.maxCurrentAmps ?? 16
         model.setCurrent(min(32, max(6, current + delta)))
-    }
-}
-
-private struct ChargerLogoMark: View {
-    var body: some View {
-        ZStack {
-            Path { path in
-                path.move(to: CGPoint(x: 9, y: 14))
-                path.addCurve(to: CGPoint(x: 5, y: 31), control1: CGPoint(x: -2, y: 22), control2: CGPoint(x: 0, y: 32))
-                path.addCurve(to: CGPoint(x: 29, y: 31), control1: CGPoint(x: 10, y: 42), control2: CGPoint(x: 28, y: 41))
-                path.addCurve(to: CGPoint(x: 27, y: 14), control1: CGPoint(x: 36, y: 28), control2: CGPoint(x: 36, y: 20))
-            }
-            .stroke(Color.cyan.opacity(0.75), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(LinearGradient(colors: [Color(white: 0.24), Color(white: 0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.24), lineWidth: 1))
-                .frame(width: 18, height: 31)
-                .overlay(alignment: .center) {
-                    VStack(spacing: 2) {
-                        HStack(spacing: 1.5) { ForEach(0..<3) { _ in Capsule().fill(Color.cyan).frame(width: 2, height: 6) } }
-                        Capsule().fill(Color.cyan.opacity(0.6)).frame(width: 2, height: 10)
-                    }
-                }
-                .offset(y: -2)
-        }
-        .frame(width: 34, height: 40)
     }
 }
 
@@ -359,7 +353,11 @@ private struct PowerGaugeView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
+                .fill(Color.clear)
+                .modifier(LiquidGlassCardBackground(
+                    shape: RoundedRectangle(cornerRadius: 26, style: .continuous),
+                    fallbackColor: Color(.secondarySystemGroupedBackground)
+                ))
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
@@ -587,6 +585,20 @@ private extension View {
             Color.clear
                 .frame(height: 88)
                 .accessibilityHidden(true)
+        }
+    }
+}
+
+private struct LiquidGlassCardBackground<S: Shape>: ViewModifier {
+    let shape: S
+    let fallbackColor: Color
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            content.background(fallbackColor, in: shape)
         }
     }
 }

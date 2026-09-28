@@ -28,6 +28,7 @@ final class ChargerViewModel: ObservableObject {
     @Published var dashboard = BenyDashboard()
     @Published private(set) var weeklySchedule: BenyWeeklySchedule?
     @Published private(set) var chargeStartMode: BenyChargeStartMode?
+    @Published private(set) var isLoadingInitialData = false
     @Published var isConnected = false
     @Published var isWorking = false
     @Published private(set) var isCommandRunning = false
@@ -116,8 +117,10 @@ final class ChargerViewModel: ObservableObject {
         while !Task.isCancelled {
             let refreshStartedAt = clock.now
             if !isCommandRunning, hasValidConfiguration {
+                if dashboard.values == nil { isLoadingInitialData = true }
                 await perform { service in
                     self.dashboard = try await service.refresh()
+                    self.isLoadingInitialData = self.dashboard.values == nil
                     if let mode = self.dashboard.chargeStartMode {
                         self.chargeStartMode = mode
                         if let id = self.activeChargerID {
@@ -263,6 +266,13 @@ final class ChargerViewModel: ObservableObject {
         runExclusive { service in
             try await action(service)
             self.dashboard = try await service.refresh()
+            self.isLoadingInitialData = self.dashboard.values == nil
+            if let mode = self.dashboard.chargeStartMode {
+                self.chargeStartMode = mode
+                if let id = self.activeChargerID {
+                    self.defaults.set(mode.rawValue, forKey: self.chargeStartModeKey(id: id))
+                }
+            }
             self.isConnected = true
         }
     }
@@ -340,6 +350,7 @@ final class ChargerViewModel: ObservableObject {
         chargeStartMode = activeChargerID.flatMap { id in
             defaults.string(forKey: chargeStartModeKey(id: id)).flatMap(BenyChargeStartMode.init(rawValue:))
         }
+        isLoadingInitialData = hasValidConfiguration
         isConnected = false
         errorMessage = nil
     }
