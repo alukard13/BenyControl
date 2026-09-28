@@ -125,6 +125,7 @@ private struct DashboardTab: View {
                 }
                 if let error = model.errorMessage { Section("Problema") { Text(error).foregroundStyle(.red) } }
             }
+            .bottomNavigationClearance()
             .navigationTitle(model.activeChargerName)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { ChargerLogoMark().frame(width: 34, height: 40).accessibilityLabel("Logotipo BenyControl") }
@@ -226,6 +227,7 @@ private struct ProgrammingView: View {
                 if let optionsError { Section("Revisa los datos") { Text(optionsError).foregroundStyle(.red) } }
                 if let error = model.errorMessage { Section("Problema") { Text(error).foregroundStyle(.red) } }
             }
+            .bottomNavigationClearance()
             .navigationTitle("Programación")
             .onAppear {
                 monthlyLimit = model.savedEnergyLimit(monthly: true)
@@ -302,6 +304,7 @@ private struct ChargerSettingsTab: View {
                     Section("Problema") { Text(error).foregroundStyle(.red) }
                 }
             }
+            .bottomNavigationClearance()
             .navigationTitle("Ajustes")
         }
     }
@@ -489,6 +492,7 @@ private struct ConnectionsTab: View {
                     Section("Problema") { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .bottomNavigationClearance()
             .navigationTitle("Conexión")
             .sheet(item: $editingCharger) { charger in
                 ChargerEditorView(model: model, charger: charger)
@@ -550,6 +554,7 @@ private struct ChargerEditorView: View {
                     Section("Revisa los datos") { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
+            .bottomNavigationClearance()
             .navigationTitle(draft.name.isEmpty ? "Nuevo cargador" : draft.name)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
@@ -572,6 +577,16 @@ private struct ChargerEditorView: View {
             } else {
                 dismiss()
             }
+        }
+    }
+}
+
+private extension View {
+    func bottomNavigationClearance() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: 88)
+                .accessibilityHidden(true)
         }
     }
 }
