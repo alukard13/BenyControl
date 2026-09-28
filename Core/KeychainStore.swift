@@ -7,17 +7,22 @@ enum KeychainStore {
 
     static func savePIN(_ pin: String) throws {
         let data = Data(pin.utf8)
-        SecItemDelete(query())
-        let status = SecItemAdd(query() + [kSecValueData: data], nil)
-        guard status == errSecSuccess else { throw KeychainError(status) }
+        SecItemDelete(query() as CFDictionary)
+        let addQuery = query().merging([kSecValueData: data]) { _, newValue in newValue }
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
     static func loadPIN() throws -> String {
         var result: CFTypeRef?
-        let status = SecItemCopyMatching(query() + [kSecReturnData: true, kSecMatchLimit: kSecMatchLimitOne], &result)
+        let lookupQuery = query().merging([
+            kSecReturnData: true,
+            kSecMatchLimit: kSecMatchLimitOne
+        ]) { _, newValue in newValue }
+        let status = SecItemCopyMatching(lookupQuery as CFDictionary, &result)
         guard status != errSecItemNotFound else { return "" }
         guard status == errSecSuccess, let data = result as? Data, let pin = String(data: data, encoding: .utf8) else {
-            throw KeychainError(status)
+            throw KeychainError(status: status)
         }
         return pin
     }

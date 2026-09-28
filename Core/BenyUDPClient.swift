@@ -1,6 +1,19 @@
 import Foundation
 import Network
 
+private final class ResolutionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isResolved = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isResolved else { return false }
+        isResolved = true
+        return true
+    }
+}
+
 enum BenyUDPError: LocalizedError {
     case invalidEndpoint
     case connectionFailed(String)
@@ -38,19 +51,18 @@ actor BenyUDPClient {
         self.connection = connection
 
         try await withCheckedThrowingContinuation { continuation in
-            var didResolve = false
+            let resolutionGate = ResolutionGate()
             connection.stateUpdateHandler = { [weak self] state in
-                guard !didResolve else { return }
                 switch state {
                 case .ready:
-                    didResolve = true
+                    guard resolutionGate.claim() else { return }
                     continuation.resume()
                 case .failed(let error):
-                    didResolve = true
+                    guard resolutionGate.claim() else { return }
                     Task { await self?.clear(connection) }
                     continuation.resume(throwing: BenyUDPError.connectionFailed(error.localizedDescription))
                 case .cancelled:
-                    didResolve = true
+                    guard resolutionGate.claim() else { return }
                     continuation.resume(throwing: BenyUDPError.connectionFailed("Conexión cancelada"))
                 default:
                     break
@@ -58,10 +70,9 @@ actor BenyUDPClient {
             }
             connection.start(queue: queue)
             queue.asyncAfter(deadline: .now() + timeout) {
-                guard !didResolve else { return }
-                didResolve = true
+                guard resolutionGate.claim() else { return }
                 connection.cancel()
-                Task { await self?.clear(connection) }
+                Task { await self.clear(connection) }
                 continuation.resume(throwing: BenyUDPError.timedOut)
             }
         }
@@ -77,10 +88,9 @@ actor BenyUDPClient {
         guard let connection else { throw BenyUDPError.connectionFailed("Sin conexión UDP") }
 
         return try await withCheckedThrowingContinuation { continuation in
-            var didResolve = false
+            let resolutionGate = ResolutionGate()
             func resolve(_ result: Result<Data, Error>) {
-                guard !didResolve else { return }
-                didResolve = true
+                guard resolutionGate.claim() else { return }
                 continuation.resume(with: result)
             }
 
