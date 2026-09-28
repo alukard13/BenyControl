@@ -8,19 +8,15 @@ struct ChargerView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Cargador BENY") {
-                    LabeledContent("Conexión") {
-                        HStack(spacing: 8) {
-                            Label(model.isConnected ? (model.isWorking ? "Actualizando" : "Conectado") : "Desconectado", systemImage: model.isConnected ? "circle.fill" : "circle")
-                                .foregroundStyle(model.isConnected ? .green : .secondary)
-                            if model.isWorking { ProgressView().controlSize(.small) }
-                        }
+                Section("Conexión") {
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(model.isConnected ? .green : .red)
+                            .frame(width: 12, height: 12)
+                        Text(model.isConnected ? "Conectado" : "No conectado")
+                        Spacer()
                     }
-                    LabeledContent("Dirección IP", value: model.ipAddress)
-                    LabeledContent("Modelo", value: model.dashboard.model)
-                    if let lastUpdated = model.lastUpdated {
-                        LabeledContent("Última actualización", value: lastUpdated.formatted(date: .omitted, time: .shortened))
-                    }
+                    .accessibilityElement(children: .combine)
                 }
                 Section {
                     PowerGaugeView(values: model.dashboard.values)
@@ -34,16 +30,15 @@ struct ChargerView: View {
                     LabeledContent("Alertas", value: model.dashboard.status.activeFaults.isEmpty ? "Ninguna" : model.dashboard.status.activeFaults.joined(separator: ", "))
                 }
                 Section {
-                    Button("Actualizar estado") { model.refresh() }.disabled(model.isWorking)
-                    Button("Iniciar carga") { confirmStart = true }.disabled(model.isWorking)
-                    Button("Detener carga", role: .destructive) { model.stopCharging() }.disabled(model.isWorking)
+                    Button("Iniciar carga") { confirmStart = true }.disabled(model.isCommandRunning)
+                    Button("Detener carga", role: .destructive) { model.stopCharging() }.disabled(model.isCommandRunning)
                     HStack {
                         Text("Límite de corriente")
                         Spacer()
                         Button { adjustCurrent(-1) } label: { Image(systemName: "minus.circle") }
                         Text("\(model.dashboard.values?.maxCurrentAmps ?? 16) A").monospacedDigit()
                         Button { adjustCurrent(1) } label: { Image(systemName: "plus.circle") }
-                    }.disabled(model.isWorking)
+                    }.disabled(model.isCommandRunning)
                 }
                 if let error = model.errorMessage { Section("Problema") { Text(error).foregroundStyle(.red) } }
                 Section("Diagnóstico técnico") {
@@ -165,7 +160,7 @@ private struct SettingsView: View {
                 TextField("Puerto UDP", text: $model.portText).keyboardType(.numberPad)
                 TextField("Número de serie", text: $model.serialNumber).keyboardType(.numberPad)
                 SecureField("PIN de 6 dígitos", text: $model.pin).keyboardType(.numberPad)
-                Button("Probar conexión") { model.testConnection() }.disabled(model.isWorking)
+                Button("Probar conexión") { model.testConnection() }.disabled(model.isCommandRunning)
                 Button("Guardar") { model.save(); if model.errorMessage == nil { isPresented = false } }
             }
             .navigationTitle("Ajustes")

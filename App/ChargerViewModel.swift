@@ -7,9 +7,9 @@ final class ChargerViewModel: ObservableObject {
     @Published var serialNumber: String
     @Published var pin: String
     @Published var dashboard = BenyDashboard()
-    @Published var lastUpdated: Date?
     @Published var isConnected = false
     @Published var isWorking = false
+    @Published private(set) var isCommandRunning = false
     @Published var errorMessage: String?
     @Published var debugEnabled = false
     @Published var debugEvents: [BenyDebugEvent] = []
@@ -33,30 +33,20 @@ final class ChargerViewModel: ObservableObject {
     }
 
     func testConnection() {
-        Task { await perform { service in
+        runExclusive { service in
             self.dashboard.model = try await service.testConnection()
             self.isConnected = true
-            self.lastUpdated = .now
-        }}
-    }
-
-    func refresh() {
-        Task { await perform { service in
-            self.dashboard = try await service.refresh()
-            self.isConnected = true
-            self.lastUpdated = .now
-        }}
+        }
     }
 
     func refreshAutomatically(every interval: Duration = .seconds(3)) async {
         let clock = ContinuousClock()
         while !Task.isCancelled {
             let refreshStartedAt = clock.now
-            if hasValidConfiguration {
+            if !isCommandRunning, hasValidConfiguration {
                 await perform { service in
                     self.dashboard = try await service.refresh()
                     self.isConnected = true
-                    self.lastUpdated = .now
                 }
             }
             do {
@@ -72,12 +62,21 @@ final class ChargerViewModel: ObservableObject {
     func setCurrent(_ amps: Int) { control { try await $0.setMaxCurrent(amps) } }
 
     private func control(_ action: @escaping (BenyChargerService) async throws -> Void) {
-        Task { await perform { service in
+        runExclusive { service in
             try await action(service)
             self.dashboard = try await service.refresh()
             self.isConnected = true
-            self.lastUpdated = .now
-        }}
+        }
+    }
+
+    private func runExclusive(_ action: @escaping (BenyChargerService) async throws -> Void) {
+        guard !isCommandRunning else { return }
+        isCommandRunning = true
+        Task {
+            await waitUntilIdle()
+            await perform(action)
+            isCommandRunning = false
+        }
     }
 
     private func perform(_ action: @escaping (BenyChargerService) async throws -> Void) async {
@@ -97,6 +96,16 @@ final class ChargerViewModel: ObservableObject {
             isConnected = false
         }
         isWorking = false
+        let waiters = idleWaiters
+        idleWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+
+    private func waitUntilIdle() async {
+        guard isWorking else { return }
+        await withCheckedContinuation { idleWaiters.append($0) }
     }
 
     private func validatedConfiguration() -> BenyConnectionConfiguration? {
