@@ -2,8 +2,90 @@ import SwiftUI
 
 struct ChargerView: View {
     @StateObject private var model = ChargerViewModel()
-    @State private var showSettings = false
-    @State private var showChargingOptions = false
+    @State private var selectedTab: MainTab = .home
+
+    var body: some View {
+        Group {
+            switch selectedTab {
+            case .home: DashboardTab(model: model)
+            case .programming: ProgrammingView(model: model)
+            case .settings: ChargerSettingsTab(model: model)
+            case .connection: ConnectionsTab(model: model)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            BottomNavigationBar(selection: $selectedTab)
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+        }
+        .task { await model.refreshAutomatically() }
+    }
+}
+
+private enum MainTab: String, CaseIterable, Identifiable {
+    case home, programming, settings, connection
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .home: return "Inicio"
+        case .programming: return "Programación"
+        case .settings: return "Ajustes"
+        case .connection: return "Conexión"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .home: return "house.fill"
+        case .programming: return "clock.fill"
+        case .settings: return "gearshape.fill"
+        case .connection: return "wifi"
+        }
+    }
+}
+
+private struct BottomNavigationBar: View {
+    @Binding var selection: MainTab
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(MainTab.allCases) { tab in
+                Button {
+                    selection = tab
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 25, weight: .semibold))
+                        Text(tab.title)
+                            .font(.system(size: 11, weight: .medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(selection == tab ? Color.accentColor : Color.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 64)
+                    .background {
+                        if selection == tab {
+                            RoundedRectangle(cornerRadius: 34, style: .continuous)
+                                .fill(Color(uiColor: .tertiarySystemFill))
+                        }
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == tab ? .isSelected : [])
+            }
+        }
+        .padding(5)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 1))
+        .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 3)
+    }
+}
+
+private struct DashboardTab: View {
+    @ObservedObject var model: ChargerViewModel
     @State private var confirmStart = false
 
     var body: some View {
@@ -31,11 +113,6 @@ struct ChargerView: View {
                     LabeledContent("Alertas", value: model.dashboard.status.activeFaults.isEmpty ? "Ninguna" : model.dashboard.status.activeFaults.joined(separator: ", "))
                 }
                 Section {
-                    Button { showChargingOptions = true } label: {
-                        Label("Programación y límites", systemImage: "calendar.badge.clock")
-                    }
-                }
-                Section {
                     Button("Iniciar carga") { confirmStart = true }.disabled(model.isCommandRunning)
                     Button("Detener carga", role: .destructive) { model.stopCharging() }.disabled(model.isCommandRunning)
                     HStack {
@@ -47,26 +124,11 @@ struct ChargerView: View {
                     }.disabled(model.isCommandRunning)
                 }
                 if let error = model.errorMessage { Section("Problema") { Text(error).foregroundStyle(.red) } }
-                Section("Diagnóstico técnico") {
-                    Toggle("Mostrar registro técnico", isOn: $model.debugEnabled)
-                    if model.debugEnabled {
-                        ForEach(model.debugEvents) { event in
-                            VStack(alignment: .leading) {
-                                Text("\(event.direction) \(event.detail)").font(.caption).foregroundStyle(.secondary)
-                                Text(event.hex).font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
-                            }
-                        }
-                    }
-                }
             }
             .navigationTitle(model.activeChargerName)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { ChargerLogoMark().frame(width: 34, height: 40).accessibilityLabel("Logotipo BenyControl") }
-                ToolbarItem(placement: .topBarTrailing) { Button("Ajustes") { showSettings = true } }
             }
-            .sheet(isPresented: $showSettings) { SettingsView(model: model, isPresented: $showSettings) }
-            .sheet(isPresented: $showChargingOptions) { ChargingOptionsView(model: model) }
-            .task { await model.refreshAutomatically() }
             .confirmationDialog("¿Iniciar la carga?", isPresented: $confirmStart, titleVisibility: .visible) {
                 Button("Iniciar carga") { model.startCharging() }
                 Button("Cancelar", role: .cancel) { }
@@ -108,9 +170,8 @@ private struct ChargerLogoMark: View {
     }
 }
 
-private struct ChargingOptionsView: View {
+private struct ProgrammingView: View {
     @ObservedObject var model: ChargerViewModel
-    @Environment(\.dismiss) private var dismiss
     @State private var startTime = Calendar.current.date(from: DateComponents(hour: 22, minute: 0)) ?? .now
     @State private var endTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 0)) ?? .now
     @State private var selectedDays = Array(repeating: true, count: 7)
@@ -122,58 +183,6 @@ private struct ChargingOptionsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Modos de inicio") {
-                    ForEach(BenyChargeStartMode.allCases) { mode in
-                        Button {
-                            model.setChargeStartMode(mode)
-                        } label: {
-                            HStack {
-                                Text(mode.displayName).foregroundStyle(.primary)
-                                Spacer()
-                                if model.chargeStartMode == mode {
-                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
-                                }
-                            }
-                        }
-                        .disabled(model.isCommandRunning)
-                    }
-                    if let currentMode = model.chargeStartMode {
-                        Text("Último modo configurado: \(currentMode.displayName).")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    } else {
-                        Text("El cargador no informa del modo actual. Elige una opción para configurarlo y guardar el último modo enviado.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    Button("Probar lectura del modo actual") {
-                        model.probeChargeStartModeRead()
-                    }
-                    .disabled(model.isCommandRunning)
-                    Text("Prueba una consulta inferida a partir del comando de escritura; no envía nuevos valores de modo.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    if let result = model.chargeStartModeReadResult {
-                        LabeledContent("Respuesta del cargador", value: result)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                    Button("Probar consulta genérica del modo") {
-                        model.probeGenericChargeStartModeRead()
-                    }
-                    .disabled(model.isCommandRunning)
-                    if let result = model.genericChargeStartModeReadResult {
-                        LabeledContent("Respuesta genérica", value: result)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                    Button("Probar varias consultas de lectura") {
-                        model.probeChargeStartModeReadCandidates()
-                    }
-                    .disabled(model.isCommandRunning)
-                    ForEach(Array(model.chargeStartModeProbeResults.enumerated()), id: \.offset) { _, result in
-                        Text(result)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                }
                 Section("Temporizador de carga") {
                     DatePicker("Hora de inicio", selection: $startTime, displayedComponents: .hourAndMinute)
                     DatePicker("Hora de fin", selection: $endTime, displayedComponents: .hourAndMinute)
@@ -217,8 +226,7 @@ private struct ChargingOptionsView: View {
                 if let optionsError { Section("Revisa los datos") { Text(optionsError).foregroundStyle(.red) } }
                 if let error = model.errorMessage { Section("Problema") { Text(error).foregroundStyle(.red) } }
             }
-            .navigationTitle("Carga programada")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Listo") { dismiss() } } }
+            .navigationTitle("Programación")
             .onAppear {
                 monthlyLimit = model.savedEnergyLimit(monthly: true)
                 sessionLimit = model.savedEnergyLimit(monthly: false)
@@ -254,6 +262,77 @@ private struct ChargingOptionsView: View {
         }
         optionsError = nil
         if monthly { model.setMonthlyEnergyLimit(value) } else { model.setSessionEnergyLimit(value) }
+    }
+}
+
+private struct ChargerSettingsTab: View {
+    @ObservedObject var model: ChargerViewModel
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Modo de inicio") {
+                    ForEach(BenyChargeStartMode.allCases) { mode in
+                        Button {
+                            model.setChargeStartMode(mode)
+                        } label: {
+                            HStack {
+                                Text(mode.displayName).foregroundStyle(.primary)
+                                Spacer()
+                                if model.chargeStartMode == mode {
+                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
+                                }
+                            }
+                        }
+                        .disabled(model.isCommandRunning)
+                    }
+                    if let currentMode = model.chargeStartMode {
+                        Text("Modo actual del cargador: \(currentMode.displayName).")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                Section("Pruebas de lectura") {
+                    Text("Herramientas de diagnóstico del protocolo. Las consultas no cambian la configuración del cargador.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button("Probar lectura directa del modo") { model.probeChargeStartModeRead() }
+                        .disabled(model.isCommandRunning)
+                    if let result = model.chargeStartModeReadResult {
+                        LabeledContent("Respuesta", value: result)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    Button("Probar consulta genérica") { model.probeGenericChargeStartModeRead() }
+                        .disabled(model.isCommandRunning)
+                    if let result = model.genericChargeStartModeReadResult {
+                        LabeledContent("Respuesta genérica", value: result)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    Button("Probar varias consultas") { model.probeChargeStartModeReadCandidates() }
+                        .disabled(model.isCommandRunning)
+                    ForEach(Array(model.chargeStartModeProbeResults.enumerated()), id: \.offset) { _, result in
+                        Text(result)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                }
+                Section("Registro técnico") {
+                    Toggle("Mostrar registro técnico", isOn: $model.debugEnabled)
+                    if model.debugEnabled {
+                        ForEach(model.debugEvents) { event in
+                            VStack(alignment: .leading) {
+                                Text("\(event.direction) \(event.detail)").font(.caption).foregroundStyle(.secondary)
+                                Text(event.hex).font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+                if let error = model.errorMessage {
+                    Section("Problema") { Text(error).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle("Ajustes")
+        }
     }
 }
 
@@ -334,9 +413,8 @@ private struct PowerGaugeView: View {
     }
 }
 
-private struct SettingsView: View {
+private struct ConnectionsTab: View {
     @ObservedObject var model: ChargerViewModel
-    @Binding var isPresented: Bool
     @State private var editingCharger: BenyChargerProfile?
     @State private var chargerToDelete: BenyChargerProfile?
     @State private var errorMessage: String?
@@ -401,8 +479,7 @@ private struct SettingsView: View {
                     Section("Problema") { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
-            .navigationTitle("Ajustes")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Listo") { isPresented = false } } }
+            .navigationTitle("Conexión")
             .sheet(item: $editingCharger) { charger in
                 ChargerEditorView(model: model, charger: charger)
             }
