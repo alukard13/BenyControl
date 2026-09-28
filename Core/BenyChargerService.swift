@@ -58,6 +58,9 @@ actor BenyChargerService {
 
     func startCharging() async throws { try await sendControl(BenyProtocol.startRequest(pin: configuration.pin)) }
     func stopCharging() async throws { try await sendControl(BenyProtocol.stopRequest(pin: configuration.pin)) }
+    func setChargeStartMode(_ mode: BenyChargeStartMode) async throws {
+        try await sendControl(BenyProtocol.setChargeStartModeRequest(pin: configuration.pin, mode: mode))
+    }
     func setMaxCurrent(_ amps: Int) async throws { try await sendControl(BenyProtocol.setMaxCurrentRequest(pin: configuration.pin, amps: amps)) }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) async throws {
         try await sendControl(BenyProtocol.setTimerRequest(pin: configuration.pin, startHour: startHour, startMinute: startMinute, endHour: endHour, endMinute: endMinute))

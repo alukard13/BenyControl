@@ -27,6 +27,7 @@ final class ChargerViewModel: ObservableObject {
     @Published private(set) var activeChargerID: UUID?
     @Published var dashboard = BenyDashboard()
     @Published private(set) var weeklySchedule: BenyWeeklySchedule?
+    @Published private(set) var chargeStartMode: BenyChargeStartMode?
     @Published var isConnected = false
     @Published var isWorking = false
     @Published private(set) var isCommandRunning = false
@@ -90,6 +91,8 @@ final class ChargerViewModel: ObservableObject {
 
         if let activeChargerID {
             defaults.set(activeChargerID.uuidString, forKey: Key.activeChargerID)
+            chargeStartMode = defaults.string(forKey: chargeStartModeKey(id: activeChargerID))
+                .flatMap(BenyChargeStartMode.init(rawValue:))
         }
     }
 
@@ -129,6 +132,15 @@ final class ChargerViewModel: ObservableObject {
     func startCharging() { control { try await $0.startCharging() } }
     func stopCharging() { control { try await $0.stopCharging() } }
     func setCurrent(_ amps: Int) { control { try await $0.setMaxCurrent(amps) } }
+    func setChargeStartMode(_ mode: BenyChargeStartMode) {
+        control {
+            try await $0.setChargeStartMode(mode)
+            self.chargeStartMode = mode
+            if let id = self.activeChargerID {
+                self.defaults.set(mode.rawValue, forKey: self.chargeStartModeKey(id: id))
+            }
+        }
+    }
     func setTimer(startHour: Int, startMinute: Int, endHour: Int?, endMinute: Int?) {
         control { try await $0.setTimer(startHour: startHour, startMinute: startMinute, endHour: endHour, endMinute: endMinute) }
     }
@@ -319,8 +331,15 @@ final class ChargerViewModel: ObservableObject {
     private func resetActiveChargerState() {
         dashboard = BenyDashboard()
         weeklySchedule = nil
+        chargeStartMode = activeChargerID.flatMap { id in
+            defaults.string(forKey: chargeStartModeKey(id: id)).flatMap(BenyChargeStartMode.init(rawValue:))
+        }
         isConnected = false
         errorMessage = nil
+    }
+
+    private func chargeStartModeKey(id: UUID) -> String {
+        "charger.\(id.uuidString).chargeStartMode"
     }
 
     private func energyLimitKey(id: UUID, monthly: Bool) -> String {

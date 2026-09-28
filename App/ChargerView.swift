@@ -123,9 +123,27 @@ private struct ChargingOptionsView: View {
         NavigationStack {
             Form {
                 Section("Modos de inicio") {
-                    Label("Desde la app: usa Iniciar carga y Detener carga en la pantalla principal.", systemImage: "iphone")
-                    Text("El inicio con tarjeta RFID o automático se configura directamente en el cargador o en Z-Box.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    ForEach(BenyChargeStartMode.allCases) { mode in
+                        Button {
+                            model.setChargeStartMode(mode)
+                        } label: {
+                            HStack {
+                                Text(mode.displayName).foregroundStyle(.primary)
+                                Spacer()
+                                if model.chargeStartMode == mode {
+                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
+                                }
+                            }
+                        }
+                        .disabled(model.isCommandRunning)
+                    }
+                    if let currentMode = model.chargeStartMode {
+                        Text("Último modo configurado: \(currentMode.displayName).")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Text("El cargador no informa del modo actual. Elige una opción para configurarlo y guardar el último modo enviado.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 Section("Temporizador de carga") {
                     DatePicker("Hora de inicio", selection: $startTime, displayedComponents: .hourAndMinute)

@@ -70,6 +70,26 @@ struct BenyWeeklySchedule: Equatable {
     let endTime: String
 }
 
+enum BenyChargeStartMode: String, CaseIterable, Identifiable, Equatable {
+    case connectAndStart
+    case rfid
+    case app
+    case rfidAndApp
+
+    var id: String { rawValue }
+    var rfidEnabled: Bool { self == .rfid || self == .rfidAndApp }
+    var appEnabled: Bool { self == .app || self == .rfidAndApp }
+
+    var displayName: String {
+        switch self {
+        case .connectAndStart: return "Conectar e iniciar"
+        case .rfid: return "Tarjeta RFID"
+        case .app: return "Control desde la app"
+        case .rfidAndApp: return "RFID y app"
+        }
+    }
+}
+
 struct BenyChargerStatus: Equatable {
     let activeFaults: [String]
 }
@@ -90,6 +110,7 @@ enum BenyProtocol {
     private static let monthlyLimitTemplate = "55aa10000d000[pin]78[limit][checksum]"
     private static let sessionLimitTemplate = "55aa10000c000[pin]74[limit][checksum]"
     private static let resetTimerTemplate = "55aa10001c000[pin]690000000000000000000000000000171035[checksum]"
+    private static let chargeStartModeTemplate = "55aa6a000d000[pin]6a[rfid][app][checksum]"
 
     static func valuesRequest(pin: String) throws -> Data {
         try request(pin: pin, type: .values)
@@ -113,6 +134,14 @@ enum BenyProtocol {
 
     static func stopRequest(pin: String) throws -> Data {
         try commandRequest(pin: pin, command: 0)
+    }
+
+    static func setChargeStartModeRequest(pin: String, mode: BenyChargeStartMode) throws -> Data {
+        try build(template: chargeStartModeTemplate, parameters: [
+            "pin": try pinHex(pin),
+            "rfid": mode.rfidEnabled ? "01" : "00",
+            "app": mode.appEnabled ? "01" : "00"
+        ])
     }
 
     static func setMaxCurrentRequest(pin: String, amps: Int) throws -> Data {
