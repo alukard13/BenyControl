@@ -7,6 +7,7 @@ final class ChargerViewModel: ObservableObject {
     @Published var serialNumber: String
     @Published var pin: String
     @Published var dashboard = BenyDashboard()
+    @Published var lastUpdated: Date?
     @Published var isConnected = false
     @Published var isWorking = false
     @Published var errorMessage: String?
@@ -31,46 +32,71 @@ final class ChargerViewModel: ObservableObject {
         catch { errorMessage = error.localizedDescription }
     }
 
-    func testConnection() { perform { service in
-        self.dashboard.model = try await service.testConnection()
-        self.isConnected = true
-    }}
+    func testConnection() {
+        Task { await perform { service in
+            self.dashboard.model = try await service.testConnection()
+            self.isConnected = true
+            self.lastUpdated = .now
+        }}
+    }
 
-    func refresh() { perform { service in
-        self.dashboard = try await service.refresh()
-        self.isConnected = true
-    }}
+    func refresh() {
+        Task { await perform { service in
+            self.dashboard = try await service.refresh()
+            self.isConnected = true
+            self.lastUpdated = .now
+        }}
+    }
+
+    func refreshAutomatically(every interval: Duration = .seconds(3)) async {
+        let clock = ContinuousClock()
+        while !Task.isCancelled {
+            let refreshStartedAt = clock.now
+            if hasValidConfiguration {
+                await perform { service in
+                    self.dashboard = try await service.refresh()
+                    self.isConnected = true
+                    self.lastUpdated = .now
+                }
+            }
+            do {
+                try await clock.sleep(until: refreshStartedAt.advanced(by: interval), tolerance: .milliseconds(100))
+            } catch {
+                return
+            }
+        }
+    }
 
     func startCharging() { control { try await $0.startCharging() } }
     func stopCharging() { control { try await $0.stopCharging() } }
     func setCurrent(_ amps: Int) { control { try await $0.setMaxCurrent(amps) } }
 
     private func control(_ action: @escaping (BenyChargerService) async throws -> Void) {
-        perform { service in
+        Task { await perform { service in
             try await action(service)
             self.dashboard = try await service.refresh()
             self.isConnected = true
-        }
+            self.lastUpdated = .now
+        }}
     }
 
-    private func perform(_ action: @escaping (BenyChargerService) async throws -> Void) {
+    private func perform(_ action: @escaping (BenyChargerService) async throws -> Void) async {
+        guard !isWorking else { return }
         guard let configuration = validatedConfiguration() else { return }
         save()
         isWorking = true; errorMessage = nil
         let traceIsEnabled = debugEnabled
-        Task {
-            do {
-                let service = try BenyChargerService(configuration: configuration) { [weak self] event in
-                    guard traceIsEnabled else { return }
-                    Task { @MainActor in self?.debugEvents.insert(event, at: 0) }
-                }
-                try await action(service)
-            } catch {
-                errorMessage = error.localizedDescription
-                isConnected = false
+        do {
+            let service = try BenyChargerService(configuration: configuration) { [weak self] event in
+                guard traceIsEnabled else { return }
+                Task { @MainActor in self?.debugEvents.insert(event, at: 0) }
             }
-            isWorking = false
+            try await action(service)
+        } catch {
+            errorMessage = error.localizedDescription
+            isConnected = false
         }
+        isWorking = false
     }
 
     private func validatedConfiguration() -> BenyConnectionConfiguration? {
@@ -80,5 +106,13 @@ final class ChargerViewModel: ObservableObject {
             return nil
         }
         return BenyConnectionConfiguration(ipAddress: ipAddress, port: port, serialNumber: serialNumber, pin: pin)
+    }
+
+    private var hasValidConfiguration: Bool {
+        guard UInt16(portText) != nil, !ipAddress.isEmpty, serialNumber.count == 9,
+              serialNumber.allSatisfy(\.isNumber), pin.count == 6, pin.allSatisfy(\.isNumber) else {
+            return false
+        }
+        return true
     }
 }
